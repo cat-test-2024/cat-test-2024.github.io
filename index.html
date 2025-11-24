@@ -253,6 +253,25 @@
             border-radius: 12px;
         }
         
+        .result-advice {
+            margin-bottom: 30px;
+            text-align: left;
+        }
+        
+        .advice-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #8b6b4c;
+            font-size: 1.2rem;
+        }
+        
+        #result-advice {
+            background-color: #f8f4f0;
+            padding: 20px;
+            border-radius: 12px;
+            line-height: 1.7;
+        }
+        
         .share-section {
             margin-top: 30px;
             padding-top: 20px;
@@ -1539,6 +1558,7 @@
         const resultDescription = document.getElementById('result-description');
         const resultImage = document.getElementById('result-image');
         const resultRarity = document.getElementById('result-rarity');
+        const resultAdvice = document.getElementById('result-advice');
         const rarityExplanation = document.getElementById('rarity-explanation');
         const startBtn = document.getElementById('start-btn');
         const restartBtn = document.getElementById('restart-btn');
@@ -1673,6 +1693,7 @@
                 // 显示结果
                 resultTitle.textContent = bestMatch.title;
                 resultDescription.textContent = bestMatch.description;
+                resultAdvice.textContent = bestMatch.advice; // 添加这行代码显示相处建议
             
                 // 设置稀有度显示
                 let rarityText = "";
