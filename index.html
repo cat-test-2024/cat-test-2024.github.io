@@ -336,6 +336,7 @@
             background: linear-gradient(135deg, #f3e5f5, #e1bee7);
             color: #7b1fa2;
             border: 2px solid #ba68c8;
+            animation: pulse 2s infinite alternate;
         }
         
         .rarity-legendary {
@@ -351,6 +352,15 @@
             }
             to {
                 box-shadow: 0 0 15px #ffd54f, 0 0 20px #ffd54f;
+            }
+        }
+        
+        @keyframes pulse {
+            from {
+                box-shadow: 0 0 5px #ba68c8;
+            }
+            to {
+                box-shadow: 0 0 10px #ba68c8, 0 0 15px #ba68c8;
             }
         }
         
@@ -520,803 +530,423 @@
     </div>
 
     <script>
-        // ============ 第5部分：加载优化 ============
-        // 添加页面加载完成检测
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('猫咪职业测试页面加载完成');
-            // 页面加载完成后可以添加一些初始化操作
-        });
+        // ============ 全局变量 ============
+        let currentQuestionIndex = 0;
+        let userScores = {};
+        let selectedOptionIndex = null;
+        let userChoices = [];
 
-        // 防止重复提交
-        let isSubmitting = false;
+        // 特质分类和权重
+        const traitCategories = {
+            energetic: { weight: 2.0, name: "精力充沛" },
+            lazy: { weight: 1.8, name: "慵懒" },
+            social: { weight: 1.6, name: "社交型" },
+            independent: { weight: 1.5, name: "独立型" },
+            observer: { weight: 1.4, name: "观察者" },
+            playful: { weight: 1.3, name: "爱玩" },
+            affectionate: { weight: 1.2, name: "亲热型" },
+            cautious: { weight: 1.2, name: "谨慎" },
+            explorer: { weight: 1.2, name: "探索者" },
+            hunter: { weight: 1.1, name: "猎手" },
+            homebody: { weight: 1.1, name: "居家型" },
+            foodie: { weight: 1.0, name: "吃货" },
+            territorial: { weight: 1.0, name: "领地意识" },
+            refined: { weight: 0.9, name: "优雅" },
+            provider: { weight: 1.0, name: "提供者" },
+            loyal: { weight: 1.0, name: "忠诚" }
+        };
 
-        // 测试数据 - 30个问题，每个问题有5个选项
+        // 初始化分数对象
+        function initializeScores() {
+            for (const trait in traitCategories) {
+                userScores[trait] = 0;
+            }
+            userChoices = new Array(questions.length).fill(null);
+        }
+
+        // 优化的匹配算法
+        function findBestMatch() {
+            let bestMatch = null;
+            let bestScore = -1;
+            
+            results.forEach(result => {
+                const matchScore = calculateMatchScore(result.conditions);
+                
+                if (matchScore > bestScore) {
+                    bestScore = matchScore;
+                    bestMatch = result;
+                }
+            });
+            
+            console.log("最佳匹配结果:", bestMatch?.title, "得分:", bestScore.toFixed(2));
+            return bestMatch;
+        }
+
+        // 匹配分数计算
+        function calculateMatchScore(conditions) {
+            let totalScore = 0;
+            let maxPossibleScore = 0;
+            
+            for (const trait in conditions) {
+                const requiredScore = conditions[trait];
+                const userScore = userScores[trait] || 0;
+                
+                if (requiredScore > 0) {
+                    // 计算该特质的匹配度（0-1）
+                    let traitMatch = 0;
+                    
+                    // 使用软阈值：用户分数达到要求80%即可获得较高匹配度
+                    if (userScore >= requiredScore * 0.8) {
+                        traitMatch = Math.min(1.0, userScore / requiredScore);
+                    } else {
+                        traitMatch = (userScore / requiredScore) * 0.8;
+                    }
+                    
+                    // 应用特质权重
+                    const weight = traitCategories[trait]?.weight || 1.0;
+                    totalScore += traitMatch * weight;
+                    maxPossibleScore += weight;
+                }
+            }
+            
+            // 额外加分：如果用户的核心特质非常突出
+            let bonusScore = 0;
+            for (const trait in conditions) {
+                const requiredScore = conditions[trait];
+                const userScore = userScores[trait] || 0;
+                
+                if (requiredScore > 0 && userScore > requiredScore * 1.2) {
+                    bonusScore += 0.05; // 每项突出特质额外加5%
+                }
+            }
+            
+            const baseScore = maxPossibleScore > 0 ? totalScore / maxPossibleScore : 0;
+            return Math.min(1.0, baseScore + bonusScore);
+        }
+
+        // 30个测试问题
         const questions = [
             {
                 question: "早上醒来时，你的猫咪通常做什么？",
                 options: [
-                    { 
-                        text: "伸个懒腰，继续在温暖的地方打盹", 
-                        scores: { lazy: 2, homebody: 1 } 
-                    },
-                    { 
-                        text: "立刻跑到你身边，用头蹭你要求早餐", 
-                        scores: { social: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "精力充沛地在房间里跑酷，仿佛有无限能量", 
-                        scores: { energetic: 2, explorer: 1 } 
-                    },
-                    { 
-                        text: "静静地坐在窗边，观察外面的世界", 
-                        scores: { observer: 2, thinker: 1 } 
-                    },
-                    { 
-                        text: "检查家里的每个角落，看看有没有变化", 
-                        scores: { inspector: 2, cautious: 1 } 
-                    }
+                    { text: "伸个懒腰，继续在温暖的地方打盹", scores: { lazy: 4, homebody: 3 } },
+                    { text: "立刻跑到你身边，用头蹭你要求早餐", scores: { social: 4, energetic: 3 } },
+                    { text: "精力充沛地在房间里跑酷，仿佛有无限能量", scores: { energetic: 5, playful: 3 } },
+                    { text: "静静地坐在窗边，观察外面的世界", scores: { observer: 4, cautious: 3 } },
+                    { text: "检查家里的每个角落，看看有没有变化", scores: { explorer: 4, cautious: 3 } }
                 ]
             },
             {
                 question: "当有新客人来访时，你的猫咪会？",
                 options: [
-                    { 
-                        text: "躲起来，直到确定安全才出来", 
-                        scores: { cautious: 2, shy: 1 } 
-                    },
-                    { 
-                        text: "立刻上前迎接，蹭客人的腿求关注", 
-                        scores: { social: 2, friendly: 1 } 
-                    },
-                    { 
-                        text: "先观察一会儿，然后小心翼翼地接近", 
-                        scores: { observer: 2, thinker: 1 } 
-                    },
-                    { 
-                        text: "完全无视客人，继续做自己的事", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "检查客人的包包和鞋子，像安检一样", 
-                        scores: { inspector: 2, curious: 1 } 
-                    }
+                    { text: "躲起来，直到确定安全才出来", scores: { cautious: 5, independent: 3 } },
+                    { text: "立刻上前迎接，蹭客人的腿求关注", scores: { social: 5, affectionate: 3 } },
+                    { text: "先观察一会儿，然后小心翼翼地接近", scores: { observer: 4, cautious: 4 } },
+                    { text: "完全无视客人，继续做自己的事", scores: { independent: 5, lazy: 3 } },
+                    { text: "检查客人的包包和鞋子，像安检一样", scores: { explorer: 4, observer: 4 } }
                 ]
             },
             {
                 question: "你的猫咪最喜欢的玩具类型是？",
                 options: [
-                    { 
-                        text: "互动型玩具，需要你陪着一起玩", 
-                        scores: { social: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "能自己玩的玩具，比如自动激光笔或电动老鼠", 
-                        scores: { independent: 2, explorer: 1 } 
-                    },
-                    { 
-                        text: "智力玩具，需要解决问题才能获得零食", 
-                        scores: { thinker: 2, problemSolver: 1 } 
-                    },
-                    { 
-                        text: "软软的、可以抱着的东西", 
-                        scores: { lazy: 2, cuddly: 1 } 
-                    },
-                    { 
-                        text: "任何可以拆解或破坏的东西", 
-                        scores: { destructive: 2, mechanic: 1 } 
-                    }
+                    { text: "互动型玩具，需要你陪着一起玩", scores: { social: 4, playful: 4 } },
+                    { text: "能自己玩的玩具，比如自动激光笔或电动老鼠", scores: { independent: 4, playful: 3 } },
+                    { text: "智力玩具，需要解决问题才能获得零食", scores: { observer: 4, independent: 3 } },
+                    { text: "软软的、可以抱着的东西", scores: { lazy: 4, affectionate: 3 } },
+                    { text: "任何可以拆解或破坏的东西", scores: { explorer: 4, playful: 3 } }
                 ]
             },
             {
                 question: "当窗外有小鸟或其他动物时，你的猫咪会？",
                 options: [
-                    { 
-                        text: "发出奇怪的咔咔声，尾巴快速摆动", 
-                        scores: { hunter: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "静静地观察，几乎一动不动", 
-                        scores: { observer: 2, patient: 1 } 
-                    },
-                    { 
-                        text: "尝试各种方法想要出去", 
-                        scores: { explorer: 2, determined: 1 } 
-                    },
-                    { 
-                        text: "看一会儿就失去兴趣，回去睡觉", 
-                        scores: { lazy: 2, indifferent: 1 } 
-                    },
-                    { 
-                        text: "兴奋地在窗台和地面之间跳来跳去", 
-                        scores: { athletic: 2, energetic: 1 } 
-                    }
+                    { text: "发出奇怪的咔咔声，尾巴快速摆动", scores: { hunter: 5, energetic: 3 } },
+                    { text: "静静地观察，几乎一动不动", scores: { observer: 5, cautious: 3 } },
+                    { text: "尝试各种方法想要出去", scores: { explorer: 5, energetic: 3 } },
+                    { text: "看一会儿就失去兴趣，回去睡觉", scores: { lazy: 5, homebody: 3 } },
+                    { text: "兴奋地在窗台和地面之间跳来跳去", scores: { energetic: 4, playful: 4 } }
                 ]
             },
             {
                 question: "你的猫咪如何表达对你的爱意？",
                 options: [
-                    { 
-                        text: "用头蹭你，在你身上踩奶", 
-                        scores: { affectionate: 2, social: 1 } 
-                    },
-                    { 
-                        text: "给你带来'礼物'(比如玩具或小虫子)", 
-                        scores: { provider: 2, hunter: 1 } 
-                    },
-                    { 
-                        text: "当你回家时在门口迎接你", 
-                        scores: { loyal: 2, social: 1 } 
-                    },
-                    { 
-                        text: "静静地待在你身边，不打扰你", 
-                        scores: { lazy: 2, observer: 1 } 
-                    },
-                    { 
-                        text: "用爪子轻轻拍你的脸，叫你起床", 
-                        scores: { energetic: 2, provider: 1 } 
-                    }
+                    { text: "用头蹭你，在你身上踩奶", scores: { affectionate: 5, social: 3 } },
+                    { text: "给你带来'礼物'(比如玩具或小虫子)", scores: { hunter: 4, provider: 3 } },
+                    { text: "当你回家时在门口迎接你", scores: { social: 4, loyal: 4 } },
+                    { text: "静静地待在你身边，不打扰你", scores: { lazy: 4, homebody: 3 } },
+                    { text: "用爪子轻轻拍你的脸，叫你起床", scores: { energetic: 4, affectionate: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对新环境的反应是？",
                 options: [
-                    { 
-                        text: "立刻开始探索每个角落", 
-                        scores: { explorer: 2, brave: 1 } 
-                    },
-                    { 
-                        text: "先躲起来观察，慢慢适应", 
-                        scores: { cautious: 2, observer: 1 } 
-                    },
-                    { 
-                        text: "紧紧跟着你，寻求安全感", 
-                        scores: { dependent: 2, social: 1 } 
-                    },
-                    { 
-                        text: "表现得无所谓，在哪里都一样", 
-                        scores: { adaptable: 2, lazy: 1 } 
-                    },
-                    { 
-                        text: "仔细检查每个物品，确保安全", 
-                        scores: { inspector: 2, cautious: 1 } 
-                    }
+                    { text: "立刻开始探索每个角落", scores: { explorer: 5, energetic: 3 } },
+                    { text: "先躲起来观察，慢慢适应", scores: { cautious: 5, observer: 3 } },
+                    { text: "紧紧跟着你，寻求安全感", scores: { social: 4, affectionate: 4 } },
+                    { text: "表现得无所谓，在哪里都一样", scores: { independent: 4, lazy: 3 } },
+                    { text: "仔细检查每个物品，确保安全", scores: { cautious: 4, observer: 4 } }
                 ]
             },
             {
                 question: "你的猫咪的睡眠习惯是？",
                 options: [
-                    { 
-                        text: "在任何地方都能睡着，睡眠质量很好", 
-                        scores: { lazy: 2, adaptable: 1 } 
-                    },
-                    { 
-                        text: "喜欢睡在高处，能俯瞰整个房间", 
-                        scores: { observer: 2, controller: 1 } 
-                    },
-                    { 
-                        text: "一定要睡在你身边或腿上", 
-                        scores: { affectionate: 2, social: 1 } 
-                    },
-                    { 
-                        text: "睡眠很浅，一点声音就会醒来", 
-                        scores: { alert: 2, cautious: 1 } 
-                    },
-                    { 
-                        text: "睡姿奇特，像在表演杂技", 
-                        scores: { athletic: 2, funny: 1 } 
-                    }
+                    { text: "在任何地方都能睡着，睡眠质量很好", scores: { lazy: 5, homebody: 3 } },
+                    { text: "喜欢睡在高处，能俯瞰整个房间", scores: { observer: 4, independent: 3 } },
+                    { text: "一定要睡在你身边或腿上", scores: { affectionate: 5, social: 3 } },
+                    { text: "睡眠很浅，一点声音就会醒来", scores: { cautious: 5, observer: 3 } },
+                    { text: "睡姿奇特，像在表演杂技", scores: { playful: 4, energetic: 3 } }
                 ]
             },
             {
                 question: "当有奇怪的声音时，你的猫咪会？",
                 options: [
-                    { 
-                        text: "立刻警觉，寻找声音来源", 
-                        scores: { alert: 2, investigator: 1 } 
-                    },
-                    { 
-                        text: "躲到安全的地方", 
-                        scores: { cautious: 2, scared: 1 } 
-                    },
-                    { 
-                        text: "完全不在意，继续做自己的事", 
-                        scores: { lazy: 2, confident: 1 } 
-                    },
-                    { 
-                        text: "好奇地靠近，想弄清楚是什么", 
-                        scores: { explorer: 2, brave: 1 } 
-                    },
-                    { 
-                        text: "竖起耳朵，但保持原地不动观察", 
-                        scores: { observer: 2, thinker: 1 } 
-                    }
+                    { text: "立刻警觉，寻找声音来源", scores: { observer: 4, cautious: 4 } },
+                    { text: "躲到安全的地方", scores: { cautious: 5, homebody: 3 } },
+                    { text: "完全不在意，继续做自己的事", scores: { independent: 4, lazy: 3 } },
+                    { text: "好奇地靠近，想弄清楚是什么", scores: { explorer: 4, energetic: 3 } },
+                    { text: "竖起耳朵，但保持原地不动观察", scores: { observer: 5, cautious: 3 } }
                 ]
             },
             {
                 question: "你的猫咪与其他动物的相处方式是？",
                 options: [
-                    { 
-                        text: "主动示好，想交朋友", 
-                        scores: { social: 2, friendly: 1 } 
-                    },
-                    { 
-                        text: "保持距离，观察对方", 
-                        scores: { observer: 2, cautious: 1 } 
-                    },
-                    { 
-                        text: "表现出敌意，捍卫自己的领地", 
-                        scores: { territorial: 2, brave: 1 } 
-                    },
-                    { 
-                        text: "完全无视，仿佛对方不存在", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "试图追逐或玩耍，但不知轻重", 
-                        scores: { energetic: 2, clumsy: 1 } 
-                    }
+                    { text: "主动示好，想交朋友", scores: { social: 5, playful: 3 } },
+                    { text: "保持距离，观察对方", scores: { observer: 4, cautious: 4 } },
+                    { text: "表现出敌意，捍卫自己的领地", scores: { territorial: 4, cautious: 3 } },
+                    { text: "完全无视，仿佛对方不存在", scores: { independent: 5, lazy: 3 } },
+                    { text: "试图追逐或玩耍，但不知轻重", scores: { playful: 4, energetic: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对食物的态度是？",
                 options: [
-                    { 
-                        text: "非常挑食，只吃特定的食物", 
-                        scores: { picky: 2, refined: 1 } 
-                    },
-                    { 
-                        text: "什么都吃，胃口特别好", 
-                        scores: { foodie: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "吃得很快，好像有人要抢", 
-                        scores: { anxious: 2, survivor: 1 } 
-                    },
-                    { 
-                        text: "细嚼慢咽，享受每一口", 
-                        scores: { refined: 2, observer: 1 } 
-                    },
-                    { 
-                        text: "喜欢藏食物，或者把食物弄得到处都是", 
-                        scores: { messy: 2, playful: 1 } 
-                    }
+                    { text: "非常挑食，只吃特定的食物", scores: { cautious: 4, refined: 3 } },
+                    { text: "什么都吃，胃口特别好", scores: { foodie: 5, energetic: 3 } },
+                    { text: "吃得很快，好像有人要抢", scores: { energetic: 4, playful: 3 } },
+                    { text: "细嚼慢咽，享受每一口", scores: { observer: 4, refined: 3 } },
+                    { text: "喜欢藏食物，或者把食物弄得到处都是", scores: { playful: 4, explorer: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对水的态度是？",
                 options: [
-                    { 
-                        text: "讨厌水，洗澡像打仗一样", 
-                        scores: { cautious: 2, anxious: 1 } 
-                    },
-                    { 
-                        text: "对水好奇，但不敢真的接触", 
-                        scores: { observer: 2, curious: 1 } 
-                    },
-                    { 
-                        text: "完全不怕水，甚至喜欢玩水", 
-                        scores: { brave: 2, explorer: 1 } 
-                    },
-                    { 
-                        text: "只喝流动的水，对静止水没兴趣", 
-                        scores: { picky: 2, refined: 1 } 
-                    },
-                    { 
-                        text: "对水漠不关心，渴了才喝", 
-                        scores: { independent: 2, lazy: 1 } 
-                    }
+                    { text: "讨厌水，洗澡像打仗一样", scores: { cautious: 4, homebody: 3 } },
+                    { text: "对水好奇，但不敢真的接触", scores: { observer: 4, cautious: 3 } },
+                    { text: "完全不怕水，甚至喜欢玩水", scores: { explorer: 4, energetic: 3 } },
+                    { text: "只喝流动的水，对静止水没兴趣", scores: { refined: 4, cautious: 3 } },
+                    { text: "对水漠不关心，渴了才喝", scores: { independent: 4, lazy: 3 } }
                 ]
             },
             {
                 question: "你的猫咪最喜欢的休息地点是？",
                 options: [
-                    { 
-                        text: "你的床上或沙发上", 
-                        scores: { affectionate: 2, social: 1 } 
-                    },
-                    { 
-                        text: "高处，比如书架或柜子顶", 
-                        scores: { observer: 2, controller: 1 } 
-                    },
-                    { 
-                        text: "隐蔽的角落，比如床底下", 
-                        scores: { cautious: 2, shy: 1 } 
-                    },
-                    { 
-                        text: "阳光充足的地方", 
-                        scores: { lazy: 2, homebody: 1 } 
-                    },
-                    { 
-                        text: "经常换地方，没有固定位置", 
-                        scores: { explorer: 2, energetic: 1 } 
-                    }
+                    { text: "你的床上或沙发上", scores: { affectionate: 4, social: 3 } },
+                    { text: "高处，比如书架或柜子顶", scores: { observer: 5, independent: 3 } },
+                    { text: "隐蔽的角落，比如床底下", scores: { cautious: 5, homebody: 3 } },
+                    { text: "阳光充足的地方", scores: { lazy: 4, homebody: 4 } },
+                    { text: "经常换地方，没有固定位置", scores: { explorer: 4, energetic: 3 } }
                 ]
             },
             {
                 question: "当你在家工作时，你的猫咪通常会？",
                 options: [
-                    { 
-                        text: "躺在你的键盘上或电脑前", 
-                        scores: { social: 2, affectionate: 1 } 
-                    },
-                    { 
-                        text: "在旁边安静地睡觉", 
-                        scores: { lazy: 2, homebody: 1 } 
-                    },
-                    { 
-                        text: "不断打扰你，要求玩耍", 
-                        scores: { energetic: 2, playful: 1 } 
-                    },
-                    { 
-                        text: "在远处观察你", 
-                        scores: { observer: 2, thinker: 1 } 
-                    },
-                    { 
-                        text: "完全无视你，做自己的事", 
-                        scores: { independent: 2, aloof: 1 } 
-                    }
+                    { text: "躺在你的键盘上或电脑前", scores: { social: 4, affectionate: 4 } },
+                    { text: "在旁边安静地睡觉", scores: { lazy: 5, homebody: 3 } },
+                    { text: "不断打扰你，要求玩耍", scores: { playful: 5, energetic: 3 } },
+                    { text: "在远处观察你", scores: { observer: 5, independent: 3 } },
+                    { text: "完全无视你，做自己的事", scores: { independent: 5, lazy: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对纸箱的态度是？",
                 options: [
-                    { 
-                        text: "非常喜欢，一有纸箱就钻进去", 
-                        scores: { explorer: 2, playful: 1 } 
-                    },
-                    { 
-                        text: "把纸箱当床，在里面睡觉", 
-                        scores: { lazy: 2, homebody: 1 } 
-                    },
-                    { 
-                        text: "把纸箱当玩具，又抓又咬", 
-                        scores: { destructive: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "对纸箱没兴趣", 
-                        scores: { refined: 2, picky: 1 } 
-                    },
-                    { 
-                        text: "把纸箱当堡垒，在里面观察外界", 
-                        scores: { observer: 2, cautious: 1 } 
-                    }
+                    { text: "非常喜欢，一有纸箱就钻进去", scores: { explorer: 4, playful: 4 } },
+                    { text: "把纸箱当床，在里面睡觉", scores: { lazy: 5, homebody: 3 } },
+                    { text: "把纸箱当玩具，又抓又咬", scores: { playful: 5, energetic: 3 } },
+                    { text: "对纸箱没兴趣", scores: { independent: 4, refined: 3 } },
+                    { text: "把纸箱当堡垒，在里面观察外界", scores: { observer: 4, cautious: 4 } }
                 ]
             },
             {
                 question: "你的猫咪的叫声特点是？",
                 options: [
-                    { 
-                        text: "很少叫，几乎是个小哑巴", 
-                        scores: { quiet: 2, observer: 1 } 
-                    },
-                    { 
-                        text: "经常叫，用不同叫声表达需求", 
-                        scores: { social: 2, communicative: 1 } 
-                    },
-                    { 
-                        text: "只在特定情况下叫，比如饿了", 
-                        scores: { picky: 2, refined: 1 } 
-                    },
-                    { 
-                        text: "叫声很大，很有穿透力", 
-                        scores: { loud: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "发出各种奇怪的声音，不只是喵喵叫", 
-                        scores: { funny: 2, playful: 1 } 
-                    }
+                    { text: "很少叫，几乎是个小哑巴", scores: { independent: 4, observer: 3 } },
+                    { text: "经常叫，用不同叫声表达需求", scores: { social: 5, affectionate: 3 } },
+                    { text: "只在特定情况下叫，比如饿了", scores: { independent: 4, cautious: 3 } },
+                    { text: "叫声很大，很有穿透力", scores: { energetic: 4, social: 3 } },
+                    { text: "发出各种奇怪的声音，不只是喵喵叫", scores: { playful: 4, energetic: 3 } }
                 ]
             },
             {
                 question: "当你抚摸你的猫咪时，它通常会？",
                 options: [
-                    { 
-                        text: "非常享受，发出呼噜声", 
-                        scores: { affectionate: 2, social: 1 } 
-                    },
-                    { 
-                        text: "只允许摸特定部位", 
-                        scores: { picky: 2, refined: 1 } 
-                    },
-                    { 
-                        text: "一会儿就厌烦，然后走开", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "用爪子或牙齿轻轻回应", 
-                        scores: { playful: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "完全不让你摸", 
-                        scores: { cautious: 2, shy: 1 } 
-                    }
+                    { text: "非常享受，发出呼噜声", scores: { affectionate: 5, social: 3 } },
+                    { text: "只允许摸特定部位", scores: { independent: 4, cautious: 3 } },
+                    { text: "一会儿就厌烦，然后走开", scores: { independent: 5, lazy: 3 } },
+                    { text: "用爪子或牙齿轻轻回应", scores: { playful: 4, energetic: 3 } },
+                    { text: "完全不让你摸", scores: { cautious: 5, independent: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对高度的态度是？",
                 options: [
-                    { 
-                        text: "喜欢待在高处", 
-                        scores: { observer: 2, controller: 1 } 
-                    },
-                    { 
-                        text: "害怕高度，不敢跳高", 
-                        scores: { cautious: 2, anxious: 1 } 
-                    },
-                    { 
-                        text: "是攀爬高手，哪里都能上去", 
-                        scores: { athletic: 2, explorer: 1 } 
-                    },
-                    { 
-                        text: "对高度无所谓，上下自如", 
-                        scores: { adaptable: 2, confident: 1 } 
-                    },
-                    { 
-                        text: "经常从高处摔下来，但不长记性", 
-                        scores: { clumsy: 2, funny: 1 } 
-                    }
+                    { text: "喜欢待在高处", scores: { observer: 4, independent: 3 } },
+                    { text: "害怕高度，不敢跳高", scores: { cautious: 5, homebody: 3 } },
+                    { text: "是攀爬高手，哪里都能上去", scores: { energetic: 4, explorer: 4 } },
+                    { text: "对高度无所谓，上下自如", scores: { independent: 4, energetic: 3 } },
+                    { text: "经常从高处摔下来，但不长记性", scores: { playful: 4, energetic: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对陌生物品的反应是？",
                 options: [
-                    { 
-                        text: "立刻上前检查", 
-                        scores: { explorer: 2, curious: 1 } 
-                    },
-                    { 
-                        text: "保持距离观察", 
-                        scores: { observer: 2, cautious: 1 } 
-                    },
-                    { 
-                        text: "完全无视", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "表现出恐惧，躲起来", 
-                        scores: { anxious: 2, shy: 1 } 
-                    },
-                    { 
-                        text: "试图攻击或破坏", 
-                        scores: { territorial: 2, destructive: 1 } 
-                    }
+                    { text: "立刻上前检查", scores: { explorer: 5, energetic: 3 } },
+                    { text: "保持距离观察", scores: { observer: 5, cautious: 3 } },
+                    { text: "完全无视", scores: { independent: 5, lazy: 3 } },
+                    { text: "表现出恐惧，躲起来", scores: { cautious: 5, homebody: 3 } },
+                    { text: "试图攻击或破坏", scores: { territorial: 4, energetic: 3 } }
                 ]
             },
             {
                 question: "你的猫咪的日常活动主要是？",
                 options: [
-                    { 
-                        text: "睡觉，大部分时间在休息", 
-                        scores: { lazy: 2, homebody: 1 } 
-                    },
-                    { 
-                        text: "玩耍，精力充沛", 
-                        scores: { energetic: 2, playful: 1 } 
-                    },
-                    { 
-                        text: "观察周围环境", 
-                        scores: { observer: 2, thinker: 1 } 
-                    },
-                    { 
-                        text: "跟随你，寻求关注", 
-                        scores: { social: 2, affectionate: 1 } 
-                    },
-                    { 
-                        text: "探索家里的每个角落", 
-                        scores: { explorer: 2, curious: 1 } 
-                    }
+                    { text: "睡觉，大部分时间在休息", scores: { lazy: 5, homebody: 4 } },
+                    { text: "玩耍，精力充沛", scores: { playful: 5, energetic: 4 } },
+                    { text: "观察周围环境", scores: { observer: 5, cautious: 3 } },
+                    { text: "跟随你，寻求关注", scores: { social: 4, affectionate: 4 } },
+                    { text: "探索家里的每个角落", scores: { explorer: 5, energetic: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对电视或手机屏幕的态度是？",
                 options: [
-                    { 
-                        text: "非常感兴趣，会盯着看", 
-                        scores: { observer: 2, curious: 1 } 
-                    },
-                    { 
-                        text: "试图捕捉屏幕上的东西", 
-                        scores: { hunter: 2, playful: 1 } 
-                    },
-                    { 
-                        text: "完全无视", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "偶尔看一眼，但没太大兴趣", 
-                        scores: { lazy: 2, homebody: 1 } 
-                    },
-                    { 
-                        text: "害怕屏幕上的某些画面", 
-                        scores: { anxious: 2, cautious: 1 } 
-                    }
+                    { text: "非常感兴趣，会盯着看", scores: { observer: 4, cautious: 3 } },
+                    { text: "试图捕捉屏幕上的东西", scores: { hunter: 5, playful: 3 } },
+                    { text: "完全无视", scores: { independent: 5, lazy: 3 } },
+                    { text: "偶尔看一眼，但没太大兴趣", scores: { lazy: 4, homebody: 3 } },
+                    { text: "害怕屏幕上的某些画面", scores: { cautious: 5, homebody: 3 } }
                 ]
             },
             {
                 question: "你的猫咪的饮食习惯是？",
                 options: [
-                    { 
-                        text: "定时定量，很有规律", 
-                        scores: { refined: 2, picky: 1 } 
-                    },
-                    { 
-                        text: "随时想吃，没有固定时间", 
-                        scores: { foodie: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "吃得很少，对食物不感兴趣", 
-                        scores: { lazy: 2, homebody: 1 } 
-                    },
-                    { 
-                        text: "只吃特定品牌或口味的食物", 
-                        scores: { picky: 2, refined: 1 } 
-                    },
-                    { 
-                        text: "吃相难看，会把食物弄得到处都是", 
-                        scores: { messy: 2, playful: 1 } 
-                    }
+                    { text: "定时定量，很有规律", scores: { cautious: 4, refined: 3 } },
+                    { text: "随时想吃，没有固定时间", scores: { foodie: 5, energetic: 3 } },
+                    { text: "吃得很少，对食物不感兴趣", scores: { lazy: 4, independent: 3 } },
+                    { text: "只吃特定品牌或口味的食物", scores: { refined: 4, cautious: 3 } },
+                    { text: "吃相难看，会把食物弄得到处都是", scores: { playful: 4, energetic: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对梳毛的态度是？",
                 options: [
-                    { 
-                        text: "非常享受，主动要求梳毛", 
-                        scores: { affectionate: 2, social: 1 } 
-                    },
-                    { 
-                        text: "勉强接受，但不太喜欢", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "讨厌梳毛，会逃跑或反抗", 
-                        scores: { anxious: 2, cautious: 1 } 
-                    },
-                    { 
-                        text: "只允许梳特定部位", 
-                        scores: { picky: 2, refined: 1 } 
-                    },
-                    { 
-                        text: "会把梳子当玩具", 
-                        scores: { playful: 2, energetic: 1 } 
-                    }
+                    { text: "非常享受，主动要求梳毛", scores: { affectionate: 5, social: 3 } },
+                    { text: "勉强接受，但不太喜欢", scores: { independent: 4, lazy: 3 } },
+                    { text: "讨厌梳毛，会逃跑或反抗", scores: { cautious: 5, independent: 3 } },
+                    { text: "只允许梳特定部位", scores: { refined: 4, cautious: 3 } },
+                    { text: "会把梳子当玩具", scores: { playful: 4, energetic: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对门的态度是？",
                 options: [
-                    { 
-                        text: "想出去，经常在门口叫", 
-                        scores: { explorer: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "对门外世界好奇，但不敢真的出去", 
-                        scores: { observer: 2, cautious: 1 } 
-                    },
-                    { 
-                        text: "害怕出门", 
-                        scores: { anxious: 2, shy: 1 } 
-                    },
-                    { 
-                        text: "对门没兴趣，安心待在家里", 
-                        scores: { homebody: 2, lazy: 1 } 
-                    },
-                    { 
-                        text: "会开门或试图开门", 
-                        scores: { problemSolver: 2, intelligent: 1 } 
-                    }
+                    { text: "想出去，经常在门口叫", scores: { explorer: 5, energetic: 3 } },
+                    { text: "对门外世界好奇，但不敢真的出去", scores: { observer: 4, cautious: 3 } },
+                    { text: "害怕出门", scores: { cautious: 5, homebody: 3 } },
+                    { text: "对门没兴趣，安心待在家里", scores: { homebody: 5, lazy: 3 } },
+                    { text: "会开门或试图开门", scores: { explorer: 4, energetic: 4 } }
                 ]
             },
             {
                 question: "你的猫咪对塑料袋的态度是？",
                 options: [
-                    { 
-                        text: "非常喜欢，会在里面玩耍", 
-                        scores: { playful: 2, energetic: 1 } 
-                    },
-                    { 
-                        text: "害怕塑料袋的声音", 
-                        scores: { anxious: 2, cautious: 1 } 
-                    },
-                    { 
-                        text: "把塑料袋当床", 
-                        scores: { lazy: 2, homebody: 1 } 
-                    },
-                    { 
-                        text: "对塑料袋没兴趣", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "会吃塑料袋，需要特别小心", 
-                        scores: { curious: 2, problem: 1 } 
-                    }
+                    { text: "非常喜欢，会在里面玩耍", scores: { playful: 4, energetic: 3 } },
+                    { text: "害怕塑料袋的声音", scores: { cautious: 5, homebody: 3 } },
+                    { text: "把塑料袋当床", scores: { lazy: 5, homebody: 3 } },
+                    { text: "对塑料袋没兴趣", scores: { independent: 4, lazy: 3 } },
+                    { text: "会吃塑料袋，需要特别小心", scores: { explorer: 4, energetic: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对音乐的反应是？",
                 options: [
-                    { 
-                        text: "喜欢音乐，会在音乐声中放松", 
-                        scores: { refined: 2, observer: 1 } 
-                    },
-                    { 
-                        text: "对音乐没反应", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "讨厌某些类型的音乐", 
-                        scores: { picky: 2, anxious: 1 } 
-                    },
-                    { 
-                        text: "会跟着音乐节奏摆动", 
-                        scores: { playful: 2, funny: 1 } 
-                    },
-                    { 
-                        text: "害怕音乐的声音", 
-                        scores: { cautious: 2, shy: 1 } 
-                    }
+                    { text: "喜欢音乐，会在音乐声中放松", scores: { refined: 4, observer: 3 } },
+                    { text: "对音乐没反应", scores: { independent: 4, lazy: 3 } },
+                    { text: "讨厌某些类型的音乐", scores: { cautious: 4, refined: 3 } },
+                    { text: "会跟着音乐节奏摆动", scores: { playful: 4, energetic: 3 } },
+                    { text: "害怕音乐的声音", scores: { cautious: 5, homebody: 3 } }
                 ]
             },
             {
                 question: "你的猫咪的社交方式是？",
                 options: [
-                    { 
-                        text: "非常友好，喜欢所有人和动物", 
-                        scores: { social: 2, friendly: 1 } 
-                    },
-                    { 
-                        text: "只喜欢特定的人或动物", 
-                        scores: { picky: 2, refined: 1 } 
-                    },
-                    { 
-                        text: "害怕陌生人或动物", 
-                        scores: { anxious: 2, shy: 1 } 
-                    },
-                    { 
-                        text: "对其他人或动物没兴趣", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "会主动攻击陌生人或动物", 
-                        scores: { territorial: 2, aggressive: 1 } 
-                    }
+                    { text: "非常友好，喜欢所有人和动物", scores: { social: 5, affectionate: 3 } },
+                    { text: "只喜欢特定的人或动物", scores: { independent: 4, cautious: 3 } },
+                    { text: "害怕陌生人或动物", scores: { cautious: 5, homebody: 3 } },
+                    { text: "对其他人或动物没兴趣", scores: { independent: 5, lazy: 3 } },
+                    { text: "会主动攻击陌生人或动物", scores: { territorial: 5, cautious: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对清洁的态度是？",
                 options: [
-                    { 
-                        text: "非常爱干净，经常自我清洁", 
-                        scores: { refined: 2, picky: 1 } 
-                    },
-                    { 
-                        text: "只在特定时间清洁自己", 
-                        scores: { observer: 2, thinker: 1 } 
-                    },
-                    { 
-                        text: "不太爱干净，需要你帮忙清洁", 
-                        scores: { lazy: 2, homebody: 1 } 
-                    },
-                    { 
-                        text: "会帮你清洁（舔你的手或脸）", 
-                        scores: { affectionate: 2, social: 1 } 
-                    },
-                    { 
-                        text: "讨厌清洁，洗澡像打仗", 
-                        scores: { anxious: 2, cautious: 1 } 
-                    }
+                    { text: "非常爱干净，经常自我清洁", scores: { refined: 4, cautious: 3 } },
+                    { text: "只在特定时间清洁自己", scores: { observer: 4, independent: 3 } },
+                    { text: "不太爱干净，需要你帮忙清洁", scores: { lazy: 4, homebody: 3 } },
+                    { text: "会帮你清洁（舔你的手或脸）", scores: { affectionate: 5, social: 3 } },
+                    { text: "讨厌清洁，洗澡像打仗", scores: { cautious: 5, independent: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对季节变化的反应是？",
                 options: [
-                    { 
-                        text: "夏天找凉爽地方，冬天找温暖地方", 
-                        scores: { adaptable: 2, intelligent: 1 } 
-                    },
-                    { 
-                        text: "对季节变化没反应", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "冬天变得更黏人", 
-                        scores: { affectionate: 2, social: 1 } 
-                    },
-                    { 
-                        text: "夏天更活跃，冬天更懒惰", 
-                        scores: { energetic: 2, lazy: 1 } 
-                    },
-                    { 
-                        text: "对季节变化感到焦虑", 
-                        scores: { anxious: 2, cautious: 1 } 
-                    }
+                    { text: "夏天找凉爽地方，冬天找温暖地方", scores: { observer: 4, cautious: 3 } },
+                    { text: "对季节变化没反应", scores: { independent: 4, lazy: 3 } },
+                    { text: "冬天变得更黏人", scores: { affectionate: 5, social: 3 } },
+                    { text: "夏天更活跃，冬天更懒惰", scores: { energetic: 4, lazy: 3 } },
+                    { text: "对季节变化感到焦虑", scores: { cautious: 5, homebody: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对医疗护理（如喂药、剪指甲）的态度是？",
                 options: [
-                    { 
-                        text: "非常配合，像个懂事的孩子", 
-                        scores: { cooperative: 2, intelligent: 1 } 
-                    },
-                    { 
-                        text: "勉强接受，但会表现出不满", 
-                        scores: { tolerant: 2, patient: 1 } 
-                    },
-                    { 
-                        text: "强烈反抗，需要多人协助", 
-                        scores: { anxious: 2, aggressive: 1 } 
-                    },
-                    { 
-                        text: "会躲起来，让你找不到", 
-                        scores: { cautious: 2, shy: 1 } 
-                    },
-                    { 
-                        text: "完全无视，继续做自己的事", 
-                        scores: { independent: 2, aloof: 1 } 
-                    }
+                    { text: "非常配合，像个懂事的孩子", scores: { independent: 4, observer: 3 } },
+                    { text: "勉强接受，但会表现出不满", scores: { cautious: 4, independent: 3 } },
+                    { text: "强烈反抗，需要多人协助", scores: { territorial: 4, cautious: 3 } },
+                    { text: "会躲起来，让你找不到", scores: { cautious: 5, homebody: 3 } },
+                    { text: "完全无视，继续做自己的事", scores: { independent: 5, lazy: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对家庭地位的认知是？",
                 options: [
-                    { 
-                        text: "认为自己是家庭的核心", 
-                        scores: { confident: 2, social: 1 } 
-                    },
-                    { 
-                        text: "认为自己是家庭的保护者", 
-                        scores: { territorial: 2, brave: 1 } 
-                    },
-                    { 
-                        text: "认为自己是家庭的客人", 
-                        scores: { cautious: 2, observer: 1 } 
-                    },
-                    { 
-                        text: "认为自己是家庭的服务者", 
-                        scores: { provider: 2, loyal: 1 } 
-                    },
-                    { 
-                        text: "完全没有概念，随心所欲", 
-                        scores: { independent: 2, aloof: 1 } 
-                    }
+                    { text: "认为自己是家庭的核心", scores: { social: 4, affectionate: 4 } },
+                    { text: "认为自己是家庭的保护者", scores: { territorial: 4, cautious: 4 } },
+                    { text: "认为自己是家庭的客人", scores: { cautious: 4, observer: 3 } },
+                    { text: "认为自己是家庭的服务者", scores: { provider: 4, loyal: 3 } },
+                    { text: "完全没有概念，随心所欲", scores: { independent: 5, lazy: 3 } }
                 ]
             },
             {
                 question: "你的猫咪对时间的感知是？",
                 options: [
-                    { 
-                        text: "非常准时，比如固定时间要求吃饭", 
-                        scores: { refined: 2, intelligent: 1 } 
-                    },
-                    { 
-                        text: "对时间没概念，随心所欲", 
-                        scores: { independent: 2, aloof: 1 } 
-                    },
-                    { 
-                        text: "能感知你的作息时间", 
-                        scores: { observer: 2, social: 1 } 
-                    },
-                    { 
-                        text: "白天睡觉，晚上活动", 
-                        scores: { energetic: 2, explorer: 1 } 
-                    },
-                    { 
-                        text: "作息完全随你", 
-                        scores: { adaptable: 2, affectionate: 1 } 
-                    }
+                    { text: "非常准时，比如固定时间要求吃饭", scores: { refined: 4, cautious: 3 } },
+                    { text: "对时间没概念，随心所欲", scores: { independent: 4, lazy: 3 } },
+                    { text: "能感知你的作息时间", scores: { observer: 4, social: 3 } },
+                    { text: "白天睡觉，晚上活动", scores: { energetic: 4, explorer: 3 } },
+                    { text: "作息完全随你", scores: { affectionate: 4, social: 3 } }
                 ]
             }
         ];
 
-        // 职业结果数据 - 更加丰富、幽默、多样化
+        // 职业结果数据 - 调整稀有度分布
         const results = [
+            // ============ 常见职业 (12个) ============
             {
                 id: "breakfastSeller",
                 title: "苦命勤劳猫·早餐摊主",
                 description: "你的猫咪是天生的劳模！为了维持你们一家的幸福生活，它愿意凌晨4点起床去卖包子。虽然生活艰辛，但它从不抱怨，总是默默付出。它的座右铭是：'只要主人过得好，我累点没关系！'",
                 advice: "相处建议：每天给它准备一杯猫式咖啡，让它有精力继续为家庭奋斗。偶尔让它'罢工'一天，躺在沙发上当个懒猫。记得给它的小围裙绣上'家庭顶梁柱'四个大字！",
-                conditions: { energetic: 12, provider: 10, loyal: 12 },
+                conditions: { energetic: 45, social: 35, provider: 30 },
                 rarity: "common"
             },
             {
@@ -1324,7 +954,7 @@
                 title: "居家炸鸡腿",
                 description: "你的猫咪是家里的装饰品兼炸鸡腿模型！它最大的特长就是躺着，偶尔翻个面。虽然看起来没什么用，但它为家庭氛围做出了巨大贡献——毕竟，谁能拒绝一只圆滚滚的'炸鸡腿'呢？",
                 advice: "相处建议：给它准备一个舒适的'炸鸡腿专用垫'，定期给它'翻面'防止粘锅。记得每天夸它'今天炸得真均匀'，让它保持酥脆自信！",
-                conditions: { lazy: 15, homebody: 12, foodie: 10 },
+                conditions: { lazy: 50, homebody: 40, foodie: 35 },
                 rarity: "common"
             },
             {
@@ -1332,7 +962,7 @@
                 title: "黑皮体育生",
                 description: "你的猫咪浑身散发着青春活力！它热爱运动，精力充沛，每天不是在跑酷就是在准备跑酷。虽然学习成绩可能不太理想，但体育方面绝对是佼佼者！",
                 advice: "相处建议：给它准备一个小型健身房，包括跑步轮和攀爬架。每天陪它做'体能训练'，但记得在它运动后提供足够的营养补给——猫粮蛋白粉了解一下？",
-                conditions: { energetic: 14, athletic: 12, playful: 10 },
+                conditions: { energetic: 55, playful: 45, explorer: 35 },
                 rarity: "common"
             },
             {
@@ -1340,7 +970,7 @@
                 title: "海关检查员",
                 description: "你的猫咪对家里的所有物品都了如指掌！任何新东西都逃不过它的法眼，必须经过严格检查才能入境。它的口头禅是：'这个包裹安全吗？让我闻闻！'",
                 advice: "相处建议：每次购物回家都要主动开箱接受检查，给它准备一个'海关专用印章'（无害的）。新物品入境前先让它'检疫'三天，确保没有危险气味！",
-                conditions: { inspector: 14, cautious: 12, observer: 10 },
+                conditions: { cautious: 55, observer: 45, independent: 35 },
                 rarity: "common"
             },
             {
@@ -1348,23 +978,15 @@
                 title: "万能维修师傅",
                 description: "你的猫咪天生就是修东西的料！虽然它修过的东西通常会更坏，但这份热情值得鼓励。从窗帘到沙发，没有它不敢'维修'的家居用品。",
                 advice: "相处建议：给它准备一个玩具工具箱，里面装满它可以随意'修理'的玩具。记得经常夸奖它的'维修技术'，即使它只是把东西抓得更烂了。",
-                conditions: { destructive: 14, mechanic: 12, explorer: 10 },
+                conditions: { explorer: 50, playful: 40, independent: 35 },
                 rarity: "common"
-            },
-            {
-                id: "spy",
-                title: "隐藏的特务猫",
-                description: "你的猫咪行踪诡秘，神出鬼没！你永远不知道它在想什么，也不知道它下一刻会出现在哪里。它可能正在执行某项秘密任务，而你只是它的掩护身份。",
-                advice: "相处建议：不要试图找到它，它会自己选择现身时机。在家里多准备几个隐蔽的观察点，满足它的特务需求。偶尔放些'机密文件'（废纸团）让它调查。",
-                conditions: { observer: 14, cautious: 12, independent: 12 },
-                rarity: "rare"
             },
             {
                 id: "programmer",
                 title: "996程序员猫",
                 description: "你的猫咪对电子设备有着特殊的兴趣！它喜欢在键盘上散步，偶尔还会帮你'写代码'。虽然它写的代码通常是一串乱码，但这份热情值得肯定。",
                 advice: "相处建议：给它准备一个专属键盘（已断线），让它尽情'编程'。每天给它一杯'猫式咖啡'，陪它熬夜debug（抓bug）。记得定期带它做'颈椎保健操'！",
-                conditions: { thinker: 12, problemSolver: 10, homebody: 10 },
+                conditions: { independent: 55, observer: 40, cautious: 35 },
                 rarity: "common"
             },
             {
@@ -1372,7 +994,7 @@
                 title: "小区保安队长",
                 description: "你的猫咪是家里的安全负责人！它每天定时巡逻，检查门窗，确保没有可疑人员入侵。虽然工资不高（只有猫粮），但它工作非常认真。",
                 advice: "相处建议：给它配备一个巡逻小车（玩具），定期'升职加薪'（换更好的猫粮）。每天晚上给它做工作汇报，告诉它'今日辖区平安无事'！",
-                conditions: { alert: 14, territorial: 12, loyal: 10 },
+                conditions: { cautious: 55, observer: 45, territorial: 35 },
                 rarity: "common"
             },
             {
@@ -1380,7 +1002,7 @@
                 title: "清澈愚蠢大学生",
                 description: "你的猫咪有着大学生特有的单纯和呆萌！它看起来总是很困惑，做事毛手毛脚，但对世界充满好奇。虽然不太聪明，但非常可爱！",
                 advice: "相处建议：给它准备一本《猫咪大学入学指南》，每天教它一个生活小常识（比如'猫粮不会自己跑进碗里'）。考试周记得给它准备'复习资料'（抓板）！",
-                conditions: { clumsy: 12, curious: 12, playful: 10 },
+                conditions: { playful: 50, social: 40, energetic: 35 },
                 rarity: "common"
             },
             {
@@ -1388,161 +1010,112 @@
                 title: "资深渔民",
                 description: "你的猫咪有着捕鱼世家的血统！虽然生活在城市，但它对鱼类的热爱从未减退。浴缸里的玩具鱼是它的主要捕捞对象。",
                 advice: "相处建议：给它准备一个'渔船'（纸箱），一根'钓竿'（逗猫棒）。每周举行'捕鱼大赛'，奖励最肥美的'鱼'（猫条）。记得教它'可持续发展'，不要过度捕捞！",
-                conditions: { hunter: 14, patient: 10, observer: 10 },
+                conditions: { hunter: 60, observer: 40, cautious: 35 },
                 rarity: "common"
             },
             {
                 id: "model",
                 title: "超模猫",
                 description: "你的猫咪天生就是镜头前的明星！它姿态优雅，眼神迷人，随便一个姿势都能上杂志封面。缺点是有点自恋，经常对着镜子欣赏自己的美貌。",
-                advice: "相处建议: 在家开辟一个'摄影角', 用手机为它拍下每日OOTD. 发朋友圈时务必配上它的'名言', 比如'喵生格言: 优雅, 永不过时'. 它照镜子时, 请自觉充当打光师.",
-                conditions: { refined: 12, observer: 10, affectionate: 10 },
+                advice: "相处建议：在家开辟一个'摄影角'，用手机为它拍下每日OOTD。发朋友圈时务必配上它的'名言'，比如'喵生格言：优雅，永不过时'。它照镜子时，请自觉充当打光师。",
+                conditions: { refined: 55, observer: 40, independent: 35 },
                 rarity: "common"
-            },
-            {
-                id: "assassin",
-                title: "冷酷杀手猫",
-                description: "你的猫咪眼神中透着一股杀气！它行动敏捷，出手精准，家里的蟑螂和小飞虫都难逃它的魔爪。虽然收费很高（要用高级猫粮支付），但业务能力一流。",
-                advice: "相处建议：将它捕获的小飞虫, 蟑螂视为'业绩', 并用高级猫粮或冻干作为'绩效奖金'. 定期用逗猫棒进行'岗中培训', 维持它顶尖的业务水平.",
-                conditions: { hunter: 14, athletic: 12, independent: 10 },
-                rarity: "rare"
             },
             {
                 id: "spiderman",
                 title: "邻居好帮手蜘蛛侠",
                 description: "你的猫咪有着超凡的攀爬能力！窗帘、书架、门框都是它的游乐场。虽然偶尔会打碎东西，但它总是在努力帮助邻居（自认为）。",
-                advice: "相处建议：在家里安装更多稳固的猫爬架, 将它的攀爬天赋引导至正确方向. 当它又不小心碰掉东西时, 可以无奈地说: '没事, 蜘蛛侠在拯救世界时也难免撞坏几栋楼.", 
-                conditions: { athletic: 14, explorer: 12, energetic: 12 },
-                rarity: "common"
-            },
-            {
-                id: "migrantWorker",
-                title: "进城务工猫",
-                description: "你的猫咪有着勤劳朴实的品质！虽然生活不易，但它从不放弃。今天在沙发下'施工'，明天在窗帘上'装修'，为了这个家付出了太多。",
-                advice: "相处建议：认可它的辛勤, 对它说: '这个家没你得散!' 用纸箱为它搭建一个'工人休息棚', 里面放上它最爱的零食, 慰劳它一天的'施工'辛苦.", 
-                conditions: { energetic: 12, provider: 10, determined: 10 },
+                advice: "相处建议：在家里安装更多稳固的猫爬架，将它的攀爬天赋引导至正确方向。当它又不小心碰掉东西时，可以无奈地说：'没事，蜘蛛侠在拯救世界时也难免撞坏几栋楼。'",
+                conditions: { energetic: 60, explorer: 50, playful: 40 },
                 rarity: "common"
             },
             {
                 id: "idol",
                 title: "顶流爱豆猫",
                 description: "你的猫咪天生就是舞台上的焦点！它喜欢被关注，享受掌声，偶尔还会开个'演唱会'（半夜嚎叫）。虽然粉丝不多（只有你一个人），但梦想很大。",
-                advice: "相处建议：当它在你面前'喵喵'开演唱会时, 请放下手机, 充当它的全场观众, 并适时献上掌声与'安可!'. 但需协商好'演唱会'不能在工作日和深夜举行.", 
-                conditions: { social: 14, affectionate: 12, energetic: 10 },
+                advice: "相处建议：当它在你面前'喵喵'开演唱会时，请放下手机，充当它的全场观众，并适时献上掌声与'安可！'。但需协商好'演唱会'不能在工作日和深夜举行。",
+                conditions: { social: 60, affectionate: 50, energetic: 35 },
                 rarity: "common"
             },
+            
+            // ============ 稀有职业 (5个) ============
             {
-                id: "driver",
-                title: "老司机猫",
-                description: "你的猫咪对移动的物体有着特殊的兴趣！它喜欢追着激光笔跑，仿佛在驾驶一辆看不见的赛车。虽然偶尔会'追尾'（撞墙），但技术一直在进步。",
-                advice: "相处建议：用激光笔划定'赛道'(避开易碎品), 让它安全'飙车'. 在它一个漂亮漂移后, 可以配音'嘀嘀! 新手司机请避让!' 并在终点站准备好'补充体力'的小鱼干.",       
-                conditions: { energetic: 12, playful: 12, athletic: 10 },
-                rarity: "common"
-            },
-            {
-                id: "footWarmer",
-                title: "专业暖脚师傅",
-                description: "你的猫咪是冬天的救星！它总是能找到最冷的脚，然后用自己的体温温暖它们。虽然服务范围有限（只服务自家人），但服务质量一流。",
-                advice: "相处建议：在寒冷的夜晚, 主动邀请它'上岗'. 当它蜷缩在你脚边时, 要真诚地道谢: '师傅技术真好, 暖得快还恒温!' 服务结束后, 请用梳毛或按摩支付'报酬'.",      
-                conditions: { affectionate: 14, cuddly: 12, homebody: 10 },
-                rarity: "common"
-            },
-            {
-                id: "fashionBlogger",
-                title: "穿搭博主猫",
-                description: "你的猫咪对时尚有着独特的见解！它喜欢尝试各种'造型'，无论是纸箱帽子还是毛线围巾。虽然粉丝不多，但坚持每天更新'ootd'（今日穿搭）。",
-                advice: "相处建议：把旧衣服, 小丝巾改造成它的专属行头. 当它穿着你做的'高定'在屋里巡场时, 记得用夸张的语气赞美: '宝贝, 你这身引领了今年的喵界时尚!",       
-                conditions: { refined: 12, social: 10, playful: 10 },
-                rarity: "common"
-            },
-            {
-                id: "fortuneTeller",
-                title: "神秘占卜师猫",
-                description: "你的猫咪似乎能预知未来！它总是能在你准备喂食前就等在碗边，也能预测你什么时候会回家。虽然预测准确率只有50%，但气场很足。",
-                advice: "相处建议：观察它蹲在饭碗边的时间, 假装惊讶地说: '大仙, 您又算准开饭时间了!' 当它的'预言'失灵时, 也要给它台阶下: '天机莫测, 偶尔失误很正常.",     
-                conditions: { observer: 12, thinker: 10, mysterious: 10 },
+                id: "spy",
+                title: "隐藏的特务猫",
+                description: "你的猫咪行踪诡秘，神出鬼没！你永远不知道它在想什么，也不知道它下一刻会出现在哪里。它可能正在执行某项秘密任务，而你只是它的掩护身份。",
+                advice: "相处建议：不要试图找到它，它会自己选择现身时机。在家里多准备几个隐蔽的观察点，满足它的特务需求。偶尔放些'机密文件'（废纸团）让它调查。",
+                conditions: { observer: 65, independent: 55, cautious: 45 },
                 rarity: "rare"
             },
             {
-                id: "yogaInstructor",
-                title: "瑜伽教练猫",
-                description: "你的猫咪是柔术大师！它能做出各种高难度动作，从'猫式伸展'到'飞天式'无所不能。虽然学员只有你一个，但教学非常认真。",
-                advice: "相处建议：它伸懒腰时, 你就在旁边模仿它的动作, 并虚心请教: '教练, 我这个下犬式标准吗?' 它把身体扭成麻花时, 要及时点赞: '这个高阶体式, 只有您能驾驭!",       
-                conditions: { athletic: 12, flexible: 12, energetic: 10 },
-                rarity: "common"
+                id: "assassin",
+                title: "冷酷杀手猫",
+                description: "你的猫咪眼神中透着一股杀气！它行动敏捷，出手精准，家里的蟑螂和小飞虫都难逃它的魔爪。虽然收费很高（要用高级猫粮支付），但业务能力一流。",
+                advice: "相处建议：将它捕获的小飞虫、蟑螂视为'业绩'，并用高级猫粮或冻干作为'绩效奖金'。定期用逗猫棒进行'岗中培训'，维持它顶尖的业务水平。",
+                conditions: { hunter: 70, energetic: 50, independent: 40 },
+                rarity: "rare"
             },
             {
                 id: "chef",
                 title: "米其林大厨猫",
                 description: "你的猫咪对食物有着极高的要求！它不仅要吃得好，还要吃得精致。偶尔会亲自'下厨'（把猫粮从碗里扒拉出来摆盘）。",
-                advice: "相处建议：在给它摆盘猫粮时, 稍微花点心思, 比如将肉块堆成小塔, 并恭敬地递上: '主厨, 您看今天的摆盘可还满意?' 如果它扒拉猫粮, 就理解为'主厨正在调整菜品构图'.",       
-                conditions: { refined: 14, picky: 12, foodie: 12 },
+                advice: "相处建议：在给它摆盘猫粮时，稍微花点心思，比如将肉块堆成小塔，并恭敬地递上：'主厨，您看今天的摆盘可还满意？'如果它扒拉猫粮，就理解为'主厨正在调整菜品构图'。",
+                conditions: { foodie: 70, refined: 50, independent: 40 },
                 rarity: "rare"
             },
             {
                 id: "detective",
                 title: "名侦探猫",
                 description: "你的猫咪有着敏锐的观察力和推理能力！家里任何微小的变化都逃不过它的眼睛。虽然破案率不高，但破案过程非常可爱。",
-                advice: "相处建议：故意把一些小东西, 比如发圈, 瓶盖, 放在显眼又古怪的地方, 看它去调查. 当它盯着某处看时, 你可以配合地推理: '侦探大人, 是否发现了什么新线索?",       
-                conditions: { observer: 14, investigator: 12, thinker: 10 },
+                advice: "相处建议：故意把一些小东西，比如发圈、瓶盖，放在显眼又古怪的地方，看它去调查。当它盯着某处看时，你可以配合地推理：'侦探大人，是否发现了什么新线索？'",
+                conditions: { observer: 70, cautious: 55, independent: 45 },
                 rarity: "rare"
             },
             {
                 id: "archaeologist",
                 title: "考古学家猫",
                 description: "你的猫咪对家里的各个角落都充满好奇！它喜欢挖掘沙发底下、床底下等'考古遗址'，偶尔能发现失踪已久的玩具或零食。",
-                advice: "相处建议：定期在沙发底, 床下等它的'考古现场', 藏一些它喜欢但很久没玩的小玩具. 当它叼出来时, 就隆重宣布: '恭喜您, 又发掘出一件失传的喵文明珍宝!",         
-                conditions: { explorer: 14, curious: 12, investigator: 10 },
+                advice: "相处建议：定期在沙发底、床下等它的'考古现场'，藏一些它喜欢但很久没玩的小玩具。当它叼出来时，就隆重宣布：'恭喜您，又发掘出一件失传的喵文明珍宝！'",
+                conditions: { explorer: 70, observer: 50, playful: 45 },
                 rarity: "rare"
+            },
+            
+            // ============ 史诗职业 (3个) ============
+            {
+                id: "emperor",
+                title: "猫皇帝",
+                description: "你的猫咪天生就是统治者！它高傲、自信，认为整个世界都是它的领地。你只是它的仆人，负责提供食物和按摩服务。",
+                advice: "相处建议：每天醒来第一件事和睡前最后一件事，就是向'陛下'请安。进贡猫粮和罐罐时，要双手奉上，并高呼：'请陛下用膳！'它若打翻水杯，要立刻上前：'是奴才放的位置不对，碍着陛下的龙爪了。'",
+                conditions: { independent: 75, territorial: 55, refined: 45 },
+                rarity: "epic"
+            },
+            {
+                id: "footWarmer",
+                title: "专业暖脚师傅",
+                description: "你的猫咪是冬天的救星！它总是能找到最冷的脚，然后用自己的体温温暖它们。虽然服务范围有限（只服务自家人），但服务质量一流。",
+                advice: "相处建议：在寒冷的夜晚，主动邀请它'上岗'。当它蜷缩在你脚边时，要真诚地道谢：'师傅技术真好，暖得快还恒温！'服务结束后，请用梳毛或按摩支付'报酬'。",
+                conditions: { affectionate: 70, homebody: 60, lazy: 50 },
+                rarity: "epic"
             },
             {
                 id: "astronaut",
                 title: "宇航员猫",
                 description: "你的猫咪似乎来自外太空！它行为古怪，眼神深邃，偶尔会盯着天空发呆。也许它正在思念自己的母星。",
-                advice: "相处建议：把猫包或航空箱称为'返回舱', 在带它出门前, 严肃地通知: '宇航员同志, 我们即将执行一次秘密太空任务.' 它望着窗外发呆时, 就陪它一起'观测外星风景'.",         
-                conditions: { mysterious: 14, observer: 12, thinker: 12 },
+                advice: "相处建议：把猫包或航空箱称为'返回舱'，在带它出门前，严肃地通知：'宇航员同志，我们即将执行一次秘密太空任务。'它望着窗外发呆时，就陪它一起'观测外星风景'。",
+                conditions: { observer: 75, independent: 60, cautious: 50 },
                 rarity: "epic"
             },
-            {
-                id: "emperor",
-                title: "猫皇帝",
-                description: "你的猫咪天生就是统治者！它高傲、自信，认为整个世界都是它的领地。你只是它的仆人，负责提供食物和按摩服务。",
-                advice: "相处建议：每天醒来第一件事和睡前最后一件事, 就是向'陛下'请安. 进贡猫粮和罐罐时, 要双手奉上, 并高呼: '请陛下用膳!' 它若打翻水杯, 要立刻上前: '是奴才放的位置不对, 碍着陛下的龙爪了.",         
-                conditions: { territorial: 14, independent: 14, refined: 12 },
-                rarity: "epic"
-            },
+            
+            // ============ 传说职业 (1个) ============
             {
                 id: "timeTraveler",
                 title: "时间旅行者猫",
                 description: "你的猫咪似乎能穿越时空！它时而表现得像只小奶猫，时而又像个老谋深算的长者。也许它真的来自不同的时间线。",
-                advice: "相处建议：当它突然像小猫一样玩耍打滚, 你可以配合演出: '欢迎回到童年时代!' 当它沉稳地凝视远方, 你便感慨: '看来是位来自未来的智者.' 接受它时而幼稚, 时而成熟的'时空错乱'行为.",           
-                conditions: { mysterious: 15, observer: 14, thinker: 14 },
+                advice: "相处建议：当它突然像小猫一样玩耍打滚，你可以配合演出：'欢迎回到童年时代！'当它沉稳地凝视远方，你便感慨：'看来是位来自未来的智者。'接受它时而幼稚，时而成熟的'时空错乱'行为。",
+                conditions: { observer: 80, independent: 65, cautious: 55 },
                 rarity: "legendary"
             }
         ];
-
-        // 全局变量
-        let currentQuestionIndex = 0;
-        let userScores = {};
-        let selectedOptionIndex = null;
-        let userChoices = []; // 存储用户的选择
-
-        // 初始化分数对象
-        function initializeScores() {
-            const allTraits = new Set();
-            questions.forEach(q => {
-                q.options.forEach(opt => {
-                    Object.keys(opt.scores).forEach(trait => allTraits.add(trait));
-                });
-            });
-            
-            allTraits.forEach(trait => {
-                userScores[trait] = 0;
-            });
-            
-            // 初始化用户选择数组
-            userChoices = new Array(questions.length).fill(null);
-        }
 
         // DOM 元素
         const startContainer = document.getElementById('start-screen');
@@ -1579,7 +1152,6 @@
 
         // 显示当前问题
         function showQuestion() {
-            // ============ 第6部分：错误处理 ============
             try {
                 const currentQuestion = questions[currentQuestionIndex];
                 if (!currentQuestion) {
@@ -1678,7 +1250,6 @@
 
         // 显示结果
         function showResult() {
-            // ============ 第6部分：错误处理 ============
             try {
                 questionContainer.style.display = 'none';
                 resultContainer.style.display = 'block';
@@ -1693,7 +1264,7 @@
                 // 显示结果
                 resultTitle.textContent = bestMatch.title;
                 resultDescription.textContent = bestMatch.description;
-                resultAdvice.textContent = bestMatch.advice; // 添加这行代码显示相处建议
+                resultAdvice.textContent = bestMatch.advice;
             
                 // 设置稀有度显示
                 let rarityText = "";
@@ -1703,22 +1274,22 @@
                     case "common":
                         rarityText = "常见职业";
                         resultRarity.className = "rarity-badge rarity-common";
-                        explanationText = "大约30%的猫咪会获得此类职业";
+                        explanationText = "大约57%的猫咪会获得此类职业";
                         break;
                     case "rare":
                         rarityText = "稀有职业";
                         resultRarity.className = "rarity-badge rarity-rare";
-                        explanationText = "大约15%的猫咪会获得此类职业";
+                        explanationText = "大约24%的猫咪会获得此类职业";
                         break;
                     case "epic":
                         rarityText = "史诗职业";
                         resultRarity.className = "rarity-badge rarity-epic";
-                        explanationText = "只有5%的猫咪会获得此类职业";
+                        explanationText = "只有14%的猫咪会获得此类职业";
                         break;
                     case "legendary":
                         rarityText = "传说职业";
                         resultRarity.className = "rarity-badge rarity-legendary";
-                        explanationText = "仅有1%的猫咪会获得此类职业！恭喜！";
+                        explanationText = "仅有5%的猫咪会获得此类职业！恭喜！";
                         break;
                 }
                 resultRarity.textContent = rarityText;
@@ -1727,7 +1298,7 @@
                 // 设置结果图片
                 resultImage.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M50,20 C65,20 75,30 75,45 C75,60 65,70 50,70 C35,70 25,60 25,45 C25,30 35,20 50,20 Z" fill="%23ffb6c1"/><circle cx="40" cy="40" r="5" fill="%235a4a3a"/><circle cx="60" cy="40" r="5" fill="%235a4a3a"/><path d="M45,50 Q50,55 55,50" stroke="%235a4a3a" stroke-width="2" fill="none"/><path d="M35,15 Q40,5 50,5 Q60,5 65,15" stroke="%235a4a3a" stroke-width="2" fill="none"/><path d="M30,30 Q20,25 15,30" stroke="%235a4a3a" stroke-width="2" fill="none"/><path d="M70,30 Q80,25 85,30" stroke="%235a4a3a" stroke-width="2" fill="none"/></svg>')`;
 
-                // ============ 添加分享功能 ============
+                // 设置分享功能
                 setupShareButtons(bestMatch);
                 
             } catch (error) {
@@ -1736,7 +1307,7 @@
             }
         }
 
-        // ============ 新增分享功能函数 ============
+        // 分享功能函数
         function setupShareButtons(result) {
             const shareUrl = window.location.href;
             const shareText = `我的猫咪竟然是${result.title}！${result.description.substring(0, 30)}... 快来看看你家主子的隐藏职业吧！`;
@@ -1751,45 +1322,6 @@
                 const weiboUrl = `https://service.weibo.com/share/share.php?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareText)}`;
                 window.open(weiboUrl, '_blank');
             });
-        }
-
-        // 找到最匹配的职业
-        function findBestMatch() {
-            let bestMatch = null;
-            let bestScore = -1;
-            
-            results.forEach(result => {
-                let matchScore = calculateMatchScore(result.conditions);
-                if (matchScore > bestScore) {
-                    bestScore = matchScore;
-                    bestMatch = result;
-                }
-            });
-            
-            return bestMatch;
-        }
-
-        // 计算匹配分数
-        function calculateMatchScore(conditions) {
-            let score = 0;
-            let totalWeight = 0;
-            
-            for (const trait in conditions) {
-                const conditionValue = conditions[trait];
-                const userValue = userScores[trait] || 0;
-                
-                // 如果用户分数达到或超过条件值，增加匹配度
-                if (userValue >= conditionValue) {
-                    score += conditionValue;
-                } else {
-                    // 如果用户分数低于条件值，按比例减少匹配度
-                    score += (userValue / conditionValue) * conditionValue;
-                }
-                
-                totalWeight += conditionValue;
-            }
-            
-            return score / totalWeight;
         }
 
         // 重新开始测试
